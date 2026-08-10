@@ -1,559 +1,157 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { services, getServiceById } from '../data/services.js'
-import { getPricing, validateCoupon } from '../data/pricing.js'
-import { DEPOT, milesBetween } from '../lib/geo.js'
-import LocationPicker from '../components/LocationPicker.jsx'
-import EtaPreview from '../components/EtaPreview.jsx'
-import LiveTracking from '../components/LiveTracking.jsx'
-import TechnicianChat from '../components/TechnicianChat.jsx'
-import PaymentMethod from '../components/PaymentMethod.jsx'
 
-const DEFAULT_DISTANCE = 8.4
-const SERVICE_STATE = (import.meta.env.VITE_SERVICE_STATE || '').trim()
+const SERVICES = [
+  ['oil-change', 'Oil Change', 49], ['transmission', 'Transmission Service', 129],
+  ['tyre-change', 'Tyre Change', 39], ['flat-fix', 'Flat Fix', 35],
+  ['brake-service', 'Brake Service', 89], ['air-conditioning', 'Air Conditioning', 79],
+  ['sensors', 'Sensors', 69], ['programming', 'Programming', 99],
+  ['diagnostics', 'Diagnostics', 59], ['battery', 'Battery', 45],
+  ['wash-detail', 'Wash & Detail', 59], ['towing', 'Towing', 75],
+].map(([id, name, fee]) => ({ id, name, fee }))
 
-const VEHICLE_YEARS = [
-  '2024', '2023', '2022', '2021', '2020', '2019', '2018', '2017', '2016',
-  '2015', '2014', '2013', '2012', '2011', '2010',
-]
+const MILEAGE_RATE = 0.75
+const COUPONS = { VISO10: 10, FIRSTFIX: 15 }
+const money = (n) => `$${Number(n || 0).toFixed(2)}`
 
-const VEHICLE_MAKES = [
-  'Acura', 'Audi', 'BMW', 'Buick', 'Cadillac', 'Chevrolet', 'Chrysler', 'Dodge',
-  'Ford', 'GMC', 'Honda', 'Hyundai', 'Infiniti', 'Jeep', 'Kia', 'Lexus',
-  'Lincoln', 'Mazda', 'Mercedes-Benz', 'Nissan', 'Ram', 'Subaru', 'Tesla',
-  'Toyota', 'Volkswagen', 'Volvo', 'Other',
-]
+// Viso serves Georgia, USA. Keep the customer-facing phone field in US format
+// while sending a normalized +1 E.164 number to Supabase/Stripe.
+function normalizeUSPhone(value) {
+  const digits = String(value || '').replace(/\\D/g, '')
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`
+  if (digits.length === 10) return `+1${digits}`
+  return ''
+}
 
-const STEPS = [
-  { id: 1, label: 'Service' },
-  { id: 2, label: 'Details' },
-  { id: 3, label: 'When' },
-  { id: 4, label: 'Review & pay' },
-]
-
-const TIME_SLOTS = [
-  '8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
-  '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM',
-]
+function formatUSPhone(value) {
+  let digits = String(value || '').replace(/\\D/g, '')
+  if (digits.startsWith('1') && digits.length > 10) digits = digits.slice(1)
+  digits = digits.slice(0, 10)
+  if (digits.length <= 3) return digits
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+}
 
 export default function Booking() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const preselected = searchParams.get('service')
-
   const [step, setStep] = useState(1)
-  const [pricing, setPricing] = useState(null)
+  const [serviceId, setServiceId] = useState('')
   const [vehicle, setVehicle] = useState({ year: '', make: '', model: '' })
-  const [serviceId, setServiceId] = useState(preselected || services[0].id)
-  const [location, setLocation] = useState(null)
-  const [appointment, setAppointment] = useState({ mode: 'asap', date: new Date().toISOString().slice(0, 10), time: 'ASAP' })
   const [contact, setContact] = useState({ name: '', phone: '', email: '' })
+  const [location, setLocation] = useState({ address: '', city: '', notes: '' })
+  const [appointment, setAppointment] = useState({ date: '', time: '' })
+  const [distanceMiles, setDistanceMiles] = useState(0)
   const [couponInput, setCouponInput] = useState('')
-  const [coupon, setCoupon] = useState(null)
-  const [couponError, setCouponError] = useState('')
+  const [couponMessage, setCouponMessage] = useState('')
   const [consent, setConsent] = useState(false)
-  const [paymentLoading, setPaymentLoading] = useState(false)
-  const [paymentError, setPaymentError] = useState('')
-  const [locationError, setLocationError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const service = SERVICES.find((s) => s.id === serviceId)
+  const couponCode = couponInput.trim().toUpperCase()
+  const couponPercent = COUPONS[couponCode] || 0
+  const breakdown = useMemo(() => {
+    const distance = Math.max(0, Number(distanceMiles) || 0)
+    const bookingFee = service?.fee || 0
+    const mileageCharge = distance * MILEAGE_RATE
+    const subtotal = bookingFee + mileageCharge
+    const discount = subtotal * (couponPercent / 100)
+    return { bookingFee, mileageCharge, subtotal, discount, total: Math.max(0, subtotal - discount), distance }
+  }, [service, distanceMiles, couponPercent])
 
   useEffect(() => {
-    getPricing().then(setPricing)
+    if (new URLSearchParams(window.location.search).get('payment') === 'success') setStep(4)
   }, [])
 
-  useEffect(() => {
-    if (preselected && preselected !== serviceId) setServiceId(preselected)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preselected])
+  const update = (setter, key) => (e) => setter((v) => ({ ...v, [key]: e.target.value }))
+  const today = new Date().toISOString().slice(0, 10)
 
-  const service = getServiceById(serviceId)
-  const activeBonus = pricing?.bonuses.find((b) => b.id === pricing.activeBonusId)
-  const distance = location ? milesBetween(DEPOT, location) : DEFAULT_DISTANCE
-
-  const breakdown = useMemo(() => {
-    if (!pricing) return null
-    const bookingFee = pricing.bookingFees[serviceId] ?? 0
-    const rate = pricing.mileageRate * (activeBonus?.multiplier ?? 1)
-    const mileageCharge = distance * rate
-    const subtotal = bookingFee + mileageCharge
-    const discount = coupon?.valid ? subtotal * (coupon.percentOff / 100) : 0
-    const total = Math.max(subtotal - discount, 0)
-    return { bookingFee, rate, mileageCharge, subtotal, discount, total }
-  }, [pricing, serviceId, distance, activeBonus, coupon])
-
-  function pickService(id) {
-    setServiceId(id)
-    setSearchParams({ service: id })
-    setPaymentError('')
+  function handlePhoneChange(e) {
+    setContact((v) => ({ ...v, phone: formatUSPhone(e.target.value) }))
   }
 
-  function handleLocationConfirm(nextLocation) {
-    setLocationError('')
-
-    if (!nextLocation) {
-      setLocation(null)
-      return
+  function next() {
+    setError('')
+    if (step === 1 && !service) return setError('Choose a service to continue.')
+    if (step === 2) {
+      if (!vehicle.year || !vehicle.make || !vehicle.model) return setError('Please enter your vehicle details.')
+      if (!contact.name || !contact.phone || !contact.email) return setError('Please enter your contact details.')
+      if (!normalizeUSPhone(contact.phone)) return setError('Enter a valid 10-digit US phone number, for example (404) 555-0123.')
+      if (!location.address) return setError('Please enter the service address.')
     }
-
-    const state = String(
-      nextLocation.state || nextLocation.region || nextLocation.addressState || ''
-    ).trim()
-
-    if (!SERVICE_STATE) {
-      setLocationError('Viso service area is not configured yet. Add VITE_SERVICE_STATE to your environment variables before accepting bookings.')
-      setLocation(null)
-      return
-    }
-
-    if (state && state.toLowerCase() !== SERVICE_STATE.toLowerCase()) {
-      setLocation(null)
-      setLocationError(
-        `We currently only serve customers in and around ${SERVICE_STATE}. We’re working on expanding to more areas.`
-      )
-      return
-    }
-
-    setLocation(nextLocation)
-  }
-
-  function validateStep(currentStep) {
-    if (currentStep === 1) return Boolean(serviceId)
-    if (currentStep === 2) {
-      return Boolean(vehicle.year && vehicle.make && vehicle.model.trim() && location && !locationError)
-    }
-    if (currentStep === 3) {
-      const visitValid = appointment.mode === 'asap'
-        ? Boolean(appointment.date && appointment.time === 'ASAP')
-        : Boolean(appointment.date && appointment.time)
-      return Boolean(
-        visitValid &&
-          contact.name.trim().length > 1 &&
-          contact.phone.replace(/\D/g, '').length >= 10 &&
-          /\S+@\S+\.\S+/.test(contact.email)
-      )
-    }
-    return true
-  }
-
-  function nextStep() {
-    setPaymentError('')
-    if (validateStep(step)) setStep((current) => Math.min(current + 1, 4))
-  }
-
-  function previousStep() {
-    setPaymentError('')
-    setStep((current) => Math.max(current - 1, 1))
-  }
-
-  async function applyCoupon() {
-    setCouponError('')
-    if (!couponInput.trim()) return
-    const result = await validateCoupon(couponInput)
-    if (result.valid) {
-      setCoupon(result)
-    } else {
-      setCoupon(null)
-      setCouponError('That code doesn’t look right — check it and try again.')
-    }
+    if (step === 3 && (!appointment.date || !appointment.time)) return setError('Choose a date and time.')
+    setStep((s) => Math.min(4, s + 1))
   }
 
   async function completePayment() {
-    setPaymentError('')
-
-    if (!consent) {
-      setPaymentError('Please check the box above before continuing to payment.')
-      return
-    }
-
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-      setPaymentError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local.')
-      return
-    }
+    setError('')
+    if (!consent) return setError('Please accept the booking terms before paying.')
+    if (!service) return setError('Please select a service.')
+    const url = import.meta.env.VITE_SUPABASE_URL
+    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY
+    if (!url || !anon) return setError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local.')
 
     try {
-      setPaymentLoading(true)
-
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/create-checkout-session`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: supabaseAnonKey,
-            Authorization: `Bearer ${supabaseAnonKey}`,
-          },
-          body: JSON.stringify({
-            serviceId: service.id,
-            serviceName: service.name,
-            vehicle,
-            appointment,
-            contact,
-            location,
-            distanceMiles: Number(distance.toFixed(2)),
-            couponCode: coupon?.valid ? couponInput.trim().toUpperCase() : '',
-          }),
-        }
-      )
-
+      setLoading(true)
+      const response = await fetch(`${url}/functions/v1/create-checkout-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${anon}` },
+        body: JSON.stringify({
+          serviceId: service.id,
+          serviceName: service.name,
+          vehicle,
+          appointment,
+          contact: { ...contact, phone: normalizeUSPhone(contact.phone) },
+          location,
+          distanceMiles: breakdown.distance,
+          couponCode: couponPercent ? couponCode : ''
+        }),
+      })
       const result = await response.json().catch(() => ({}))
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Unable to start secure payment.')
-      }
-
-      if (!result.checkoutUrl) {
-        throw new Error('Stripe did not return a checkout URL.')
-      }
-
+      if (!response.ok) throw new Error(result.error || 'Unable to start secure payment.')
+      if (!result.checkoutUrl) throw new Error('Stripe did not return a checkout URL.')
       window.location.assign(result.checkoutUrl)
-    } catch (error) {
-      console.error('Stripe checkout error:', error)
-      setPaymentError(
-        error instanceof Error
-          ? error.message
-          : 'Something went wrong starting payment. Please try again.'
-      )
-      setPaymentLoading(false)
+    } catch (e) {
+      console.error(e)
+      setError(e?.message || 'Something went wrong. Please try again.')
+      setLoading(false)
     }
   }
 
-  if (!pricing || !breakdown) {
-    return (
-      <div className="pt-32 pb-24 max-w-[720px] mx-auto px-6 text-center text-muted">
-        Loading pricing…
-      </div>
-    )
-  }
+  const steps = ['Service', 'Details', 'When', 'Review & Pay']
 
   return (
-    <div className="pt-28 pb-28 max-w-[840px] mx-auto px-6 md:px-11">
-      <div className="mb-8">
-        <span className="text-blue text-xs font-label uppercase tracking-widest">Book a service</span>
-        <h1 className="text-3xl md:text-5xl font-display font-normal tracking-tight mt-2">
-          Let’s get your car <span className="text-blue">sorted</span>.
-        </h1>
-        <p className="text-muted text-[15px] mt-3 max-w-md">
-          Four quick steps. No fuss. You’ll see the estimate before you pay.
-        </p>
-      </div>
+    <main className="min-h-screen bg-slate-950 text-white">
+      <div className="mx-auto max-w-6xl px-5 py-10 md:px-8 md:py-16">
+        <header className="mb-10">
+          <p className="text-xs uppercase tracking-[0.3em] text-amber-300">Book Viso</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight md:text-5xl">Let’s get your car sorted.</h1>
+          <p className="mt-3 max-w-2xl text-white/60">Pick a service, tell us where and when, then pay securely through Stripe.</p>
+        </header>
 
-      <div className="mb-10" aria-label="Booking progress">
-        <div className="flex items-center gap-2 md:gap-3">
-          {STEPS.map((item, index) => {
-            const active = item.id === step
-            const complete = item.id < step
-            return (
-              <div key={item.id} className="flex items-center gap-2 md:gap-3 flex-1 last:flex-none">
-                <button
-                  type="button"
-                  onClick={() => item.id < step && setStep(item.id)}
-                  className="flex items-center gap-2 text-left min-w-0"
-                  aria-current={active ? 'step' : undefined}
-                >
-                  <span
-                    className={
-                      'w-7 h-7 rounded-full border flex items-center justify-center text-xs shrink-0 transition-colors ' +
-                      (active || complete ? 'border-blue bg-blue text-white' : 'border-line text-muted')
-                    }
-                  >
-                    {complete ? '✓' : item.id}
-                  </span>
-                  <span className={'hidden sm:block text-xs font-label truncate ' + (active ? 'text-ink' : 'text-muted')}>
-                    {item.label}
-                  </span>
-                </button>
-                {index < STEPS.length - 1 && <div className="h-px bg-line flex-1 min-w-2" />}
-              </div>
-            )
-          })}
+        <div className="mb-8 grid grid-cols-4 gap-2">
+          {steps.map((label, i) => <div key={label} className="flex items-center gap-2"><div className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-semibold ${step >= i + 1 ? 'bg-amber-300 text-slate-950' : 'bg-white/10 text-white/40'}`}>{step > i + 1 ? '✓' : i + 1}</div><span className={`hidden truncate text-xs sm:block ${step === i + 1 ? 'text-white' : 'text-white/40'}`}>{label}</span></div>)}
+        </div>
+
+        {error && <div className="mb-6 rounded-2xl border border-red-300/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">{error}</div>}
+
+        <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+          <section className="rounded-3xl border border-white/10 bg-white/[.045] p-5 md:p-8">
+            {step === 1 && <><h2 className="text-2xl font-semibold">What do you need?</h2><p className="mt-2 text-sm text-white/50">Choose the service that best matches the job.</p><div className="mt-7 grid gap-3 sm:grid-cols-2">{SERVICES.map((s) => <button key={s.id} type="button" onClick={() => setServiceId(s.id)} className={`rounded-2xl border p-5 text-left transition ${serviceId === s.id ? 'border-amber-300 bg-amber-300/10' : 'border-white/10 bg-white/[.03] hover:border-white/25'}`}><div className="flex justify-between gap-4"><span className="font-medium">{s.name}</span><span className="text-sm text-amber-300">{money(s.fee)}</span></div></button>)}</div></>}
+
+            {step === 2 && <><h2 className="text-2xl font-semibold">Tell us about you and the car.</h2><div className="mt-7 space-y-7"><div><p className="mb-3 text-sm text-white/70">Vehicle</p><div className="grid gap-3 sm:grid-cols-3"><input value={vehicle.year} onChange={update(setVehicle, 'year')} placeholder="Year" className="field"/><input value={vehicle.make} onChange={update(setVehicle, 'make')} placeholder="Make" className="field"/><input value={vehicle.model} onChange={update(setVehicle, 'model')} placeholder="Model" className="field"/></div></div><div><p className="mb-3 text-sm text-white/70">Contact</p><div className="grid gap-3 sm:grid-cols-2"><input value={contact.name} onChange={update(setContact, 'name')} placeholder="Full name" className="field"/><input value={contact.phone} onChange={handlePhoneChange} placeholder="(404) 555-0123" inputMode="tel" autoComplete="tel" type="tel" maxLength="14" className="field"/><input value={contact.email} onChange={update(setContact, 'email')} placeholder="Email address" type="email" className="field sm:col-span-2"/></div></div><div><p className="mb-3 text-sm text-white/70">Service location</p><input value={location.address} onChange={update(setLocation, 'address')} placeholder="Street address" className="field w-full"/><div className="mt-3 grid gap-3 sm:grid-cols-2"><input value={location.city} onChange={update(setLocation, 'city')} placeholder="City / suburb" className="field"/><input value={distanceMiles} onChange={(e) => setDistanceMiles(e.target.value)} type="number" min="0" step=".1" placeholder="Distance in miles" className="field"/></div><textarea value={location.notes} onChange={update(setLocation, 'notes')} rows="3" placeholder="Anything we should know? (optional)" className="field mt-3 w-full resize-none"/></div></div></>}
+
+            {step === 3 && <><h2 className="text-2xl font-semibold">When works for you?</h2><p className="mt-2 text-sm text-white/50">Choose a date and convenient time.</p><div className="mt-7 grid gap-4 sm:grid-cols-2"><label className="text-sm text-white/60">Date<input min={today} type="date" value={appointment.date} onChange={update(setAppointment, 'date')} className="field mt-2 w-full"/></label><label className="text-sm text-white/60">Time<input type="time" value={appointment.time} onChange={update(setAppointment, 'time')} className="field mt-2 w-full"/></label></div></>}
+
+            {step === 4 && <><h2 className="text-2xl font-semibold">Review & Pay</h2><p className="mt-2 text-sm text-white/50">Check your details, then continue to Stripe.</p><div className="mt-7 space-y-3 rounded-2xl border border-white/10 bg-black/20 p-5 text-sm"><Row label="Service" value={service?.name}/><Row label="Vehicle" value={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}/><Row label="Appointment" value={`${appointment.date} at ${appointment.time}`}/><Row label="Location" value={location.address}/><Row label="Email" value={contact.email}/></div><div className="mt-6 flex gap-2"><input value={couponInput} onChange={(e) => { setCouponInput(e.target.value); setCouponMessage('') }} placeholder="Coupon code" className="field min-w-0 flex-1 uppercase"/><button type="button" onClick={() => setCouponMessage(couponPercent ? `${couponPercent}% discount applied.` : 'That coupon code is not valid.')} className="rounded-xl border border-white/15 px-4 text-sm">Apply</button></div>{couponMessage && <p className={`mt-2 text-xs ${couponPercent ? 'text-amber-300' : 'text-red-300'}`}>{couponMessage}</p>}<label className="mt-6 flex gap-3 text-sm text-white/60"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 accent-amber-300"/><span>I confirm these booking details are correct and agree to Viso’s booking and cancellation terms.</span></label><button type="button" disabled={loading || !consent} onClick={completePayment} className="mt-7 w-full rounded-2xl bg-amber-300 px-5 py-4 text-sm font-semibold text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-40">{loading ? 'Opening secure checkout…' : `Continue to secure payment · ${money(breakdown.total)}`}</button></>}
+
+            <div className="mt-9 flex justify-between border-t border-white/10 pt-6"><button type="button" disabled={step === 1 || loading} onClick={() => { setError(''); setStep((s) => s - 1) }} className="rounded-full px-4 py-2 text-sm text-white/55 disabled:invisible">Back</button>{step < 4 && <button type="button" onClick={next} className="rounded-full bg-white px-6 py-3 text-sm font-semibold text-slate-950">Continue</button>}</div>
+          </section>
+
+          <aside className="h-fit rounded-3xl border border-white/10 bg-white/[.045] p-6 lg:sticky lg:top-6"><p className="text-xs uppercase tracking-[.25em] text-amber-300">Your booking</p><h2 className="mt-2 text-xl font-semibold">{service?.name || 'Select a service'}</h2><div className="my-6 space-y-3 text-sm"><Row label="Service fee" value={money(breakdown.bookingFee)}/><Row label={`${breakdown.distance.toFixed(1)} mi × $0.75`} value={money(breakdown.mileageCharge)}/>{breakdown.discount > 0 && <Row label={`Coupon (${couponPercent}%)`} value={`−${money(breakdown.discount)}`}/>}</div><div className="flex items-end justify-between border-t border-white/10 pt-5"><span className="text-sm text-white/50">Total</span><strong className="text-3xl">{money(breakdown.total)}</strong></div><p className="mt-4 text-xs leading-5 text-white/35">Payment is processed securely by Stripe. Viso does not store your card details.</p></aside>
         </div>
       </div>
-
-      {paymentError && (
-        <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {paymentError}
-        </div>
-      )}
-
-      {step === 1 && (
-        <section>
-          <StepHeading eyebrow="Step 1 of 4" title="What does your car need?" copy="Pick the service that sounds right. We’ll handle the rest." />
-          <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {services.map((s) => {
-              const active = s.id === serviceId
-              const fee = pricing.bookingFees[s.id] ?? 0
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => pickService(s.id)}
-                  data-cursor
-                  className={
-                    'text-left p-4 rounded-xl border transition-all ' +
-                    (active
-                      ? 'border-blue bg-blue/5 ring-1 ring-blue'
-                      : 'border-line hover:border-blue/60 hover:-translate-y-0.5')
-                  }
-                >
-                  <div className="font-bold text-sm mb-1">{s.name}</div>
-                  <div className="text-xs text-muted mb-2 leading-relaxed">{s.blurb}</div>
-                  <div className="text-blue text-sm font-label">from ${fee}</div>
-                </button>
-              )
-            })}
-          </div>
-          <StepActions onNext={nextStep} nextLabel="That’s the one →" />
-        </section>
-      )}
-
-      {step === 2 && (
-        <section>
-          <StepHeading eyebrow="Step 2 of 4" title="Tell us about your car." copy="And show us where it’s parked. That helps us give you a better estimate." />
-
-          <div className="p-5 rounded-xl border border-line mb-5">
-            <h2 className="font-label text-sm uppercase tracking-wide text-muted mb-4">Your vehicle</h2>
-            <div className="grid sm:grid-cols-3 gap-3">
-              <SelectField label="Year" value={vehicle.year} onChange={(value) => setVehicle((v) => ({ ...v, year: value }))} options={VEHICLE_YEARS} placeholder="Year" extraOption={{ value: 'older', label: '2009 or older' }} />
-              <SelectField label="Make" value={vehicle.make} onChange={(value) => setVehicle((v) => ({ ...v, make: value }))} options={VEHICLE_MAKES} placeholder="Make" />
-              <InputField label="Model" value={vehicle.model} onChange={(value) => setVehicle((v) => ({ ...v, model: value }))} placeholder="e.g. Camry, Accord, F-150" />
-            </div>
-          </div>
-
-          <div>
-            <h2 className="font-label text-sm uppercase tracking-wide text-muted mb-4">Where should we come?</h2>
-            <LocationPicker onConfirm={handleLocationConfirm} />
-            {locationError && (
-              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                {locationError}
-              </div>
-            )}
-            {location && (
-              <p className="text-xs text-muted mt-3">
-                Nice — that’s about {distance.toFixed(1)} mi from our nearest dispatch point.
-              </p>
-            )}
-          </div>
-
-          <StepActions onBack={previousStep} onNext={nextStep} nextLabel="Next: pick a time →" disabled={!validateStep(2)} />
-        </section>
-      )}
-
-      {step === 3 && (
-        <section>
-          <StepHeading eyebrow="Step 3 of 4" title="When should we arrive?" copy="Pick a time that works, then leave us a way to reach you." />
-
-          <div className="p-5 rounded-xl border border-line mb-5">
-            <h2 className="font-label text-sm uppercase tracking-wide text-muted mb-4">Your visit</h2>
-            <div className="mb-4">
-              <label className="text-xs text-muted mb-1.5 block">When would you like us?</label>
-              <select
-                value={appointment.mode}
-                onChange={(e) => setAppointment((v) => ({
-                  ...v,
-                  mode: e.target.value,
-                  date: e.target.value === 'asap' ? new Date().toISOString().slice(0, 10) : v.date,
-                  time: e.target.value === 'asap' ? 'ASAP' : (v.time === 'ASAP' ? '' : v.time),
-                }))}
-                className="w-full px-3.5 py-2.5 rounded-lg border border-line text-sm focus:outline-none focus:ring-1 focus:ring-blue focus:border-blue bg-white"
-              >
-                <option value="asap">ASAP — as soon as we can get to you</option>
-                <option value="scheduled">Schedule a time</option>
-              </select>
-            </div>
-            {appointment.mode === 'scheduled' && (
-              <div className="grid sm:grid-cols-2 gap-3">
-                <InputField label="Date" type="date" value={appointment.date} onChange={(value) => setAppointment((v) => ({ ...v, date: value }))} />
-                <SelectField
-                  label="Preferred time"
-                  value={appointment.time}
-                  onChange={(value) => setAppointment((v) => ({ ...v, time: value }))}
-                  options={TIME_SLOTS}
-                  placeholder="Choose a time"
-                />
-              </div>
-            )}
-            {appointment.mode === 'asap' && (
-              <p className="text-xs text-muted leading-relaxed">
-                We’ll dispatch the nearest available technician and contact you with the expected arrival time.
-              </p>
-            )}
-          </div>
-
-          <div className="p-5 rounded-xl border border-line">
-            <h2 className="font-label text-sm uppercase tracking-wide text-muted mb-4">How can we reach you?</h2>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <InputField label="Full name" value={contact.name} onChange={(value) => setContact((v) => ({ ...v, name: value }))} placeholder="Your name" />
-              <InputField label="Phone number" type="tel" value={contact.phone} onChange={(value) => setContact((v) => ({ ...v, phone: value }))} placeholder="080…" />
-              <div className="sm:col-span-2">
-                <InputField label="Email" type="email" value={contact.email} onChange={(value) => setContact((v) => ({ ...v, email: value }))} placeholder="you@example.com" />
-                <p className="text-[11px] text-muted mt-1.5">We’ll use this for your booking confirmation and receipt.</p>
-              </div>
-            </div>
-          </div>
-
-          <StepActions onBack={previousStep} onNext={nextStep} nextLabel="Review my booking →" disabled={!validateStep(3)} />
-        </section>
-      )}
-
-      {step === 4 && (
-        <section>
-          <StepHeading eyebrow="Step 4 of 4" title="Looks good? Let’s wrap it up." copy="Have a quick look. If everything checks out, you can head securely to payment." />
-
-          <div className="rounded-xl border border-line overflow-hidden mb-5">
-            <div className="p-5 border-b border-line bg-[#FAFAF8]">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs text-muted uppercase tracking-widest font-label mb-1">Service</p>
-                  <h2 className="text-xl font-bold">{service?.name}</h2>
-                </div>
-                <button type="button" onClick={() => setStep(1)} className="text-xs font-label text-blue hover:underline">Change</button>
-              </div>
-            </div>
-
-            <div className="p-5 grid sm:grid-cols-2 gap-x-8 gap-y-5">
-              <SummaryItem label="Vehicle" value={`${vehicle.year} ${vehicle.make} ${vehicle.model}`} />
-              <SummaryItem label="Visit" value={appointment.mode === 'asap' ? `ASAP · ${appointment.date}` : `${appointment.date} · ${appointment.time}`} />
-              <SummaryItem label="Location" value={location?.label || 'Confirmed location'} />
-              <SummaryItem label="Contact" value={`${contact.name} · ${contact.phone}`} />
-              <SummaryItem label="Email" value={contact.email} />
-            </div>
-
-            <div className="p-5 border-t border-line">
-              <Row label={`${service?.name} booking fee`} value={breakdown.bookingFee} />
-              <Row label={`Mileage (${distance.toFixed(1)} mi × $${breakdown.rate.toFixed(2)}/mi)`} value={breakdown.mileageCharge} />
-              {activeBonus && activeBonus.id !== 'standard' && <p className="text-xs text-blue mb-2">{activeBonus.label} rate applied</p>}
-
-              <div className="flex items-center gap-2 my-4">
-                <input
-                  type="text"
-                  value={couponInput}
-                  onChange={(e) => setCouponInput(e.target.value)}
-                  placeholder="Got a coupon?"
-                  className="flex-1 px-3.5 py-2.5 rounded-lg border border-line text-sm focus:outline-none focus:ring-1 focus:ring-blue focus:border-blue"
-                />
-                <button type="button" onClick={applyCoupon} data-cursor className="px-4 py-2.5 rounded-lg border border-line text-sm font-label hover:border-blue hover:text-blue transition-colors">Apply</button>
-              </div>
-              {couponError && <p className="text-xs text-red-600 mb-3">{couponError}</p>}
-              {coupon?.valid && <Row label={`Coupon — ${coupon.label}`} value={-breakdown.discount} highlight />}
-
-              <div className="border-t border-line mt-3 pt-3 flex justify-between items-baseline">
-                <span className="font-bold">Estimated total</span>
-                <span className="font-bold text-xl">${breakdown.total.toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
-
-          <label className="flex items-start gap-3 p-5 rounded-xl border border-line cursor-pointer mb-5">
-            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 w-4 h-4 accent-blue shrink-0" />
-            <span className="text-sm text-muted leading-relaxed">
-              This estimate covers <b className="text-ink">{service?.name}</b>. If your technician finds the job needs something extra once they’re on-site, they’ll explain it first and get your OK before doing any additional work. No surprise charges.
-            </span>
-          </label>
-
-          <EtaPreview distance={distance} />
-
-          <div className="mt-6">
-            <h2 className="font-label text-sm uppercase tracking-wide text-muted mb-4">Secure payment</h2>
-            {consent ? (
-              <PaymentMethod
-                total={breakdown.total}
-                onConfirm={completePayment}
-                loading={paymentLoading}
-              />
-            ) : (
-              <p className="text-center text-sm text-muted p-5 rounded-xl border border-dashed border-line">
-                Give the booking a quick once-over and check the box above when you’re happy with it.
-              </p>
-            )}
-          </div>
-
-          <StepActions onBack={previousStep} hideNext />
-        </section>
-      )}
-    </div>
+      <style>{`.field{border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.2);border-radius:.75rem;padding:.75rem 1rem;font-size:.875rem;outline:none;color:white}.field::placeholder{color:rgba(255,255,255,.35)}.field:focus{border-color:rgba(252,211,77,.7)}`}</style>
+    </main>
   )
 }
 
-function StepHeading({ eyebrow, title, copy }) {
-  return (
-    <div className="mb-6">
-      <span className="text-blue text-xs font-label uppercase tracking-widest">{eyebrow}</span>
-      <h2 className="text-2xl md:text-3xl font-display mt-2 tracking-tight">{title}</h2>
-      <p className="text-sm text-muted mt-2 max-w-lg leading-relaxed">{copy}</p>
-    </div>
-  )
-}
-
-function StepActions({ onBack, onNext, nextLabel, disabled = false, hideNext = false }) {
-  return (
-    <div className="flex items-center justify-between gap-3 mt-8">
-      {onBack ? (
-        <button type="button" onClick={onBack} className="px-4 py-3 text-sm font-label text-muted hover:text-ink transition-colors">← Back</button>
-      ) : <span />}
-      {!hideNext && (
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={disabled}
-          data-cursor
-          className="px-5 py-3 rounded-lg font-label text-sm bg-blue text-white hover:bg-blue-deep transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {nextLabel}
-        </button>
-      )}
-    </div>
-  )
-}
-
-function SelectField({ label, value, onChange, options, placeholder, extraOption }) {
-  return (
-    <div>
-      <label className="text-xs text-muted mb-1.5 block">{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3.5 py-2.5 rounded-lg border border-line text-sm focus:outline-none focus:ring-1 focus:ring-blue focus:border-blue bg-white"
-      >
-        <option value="">{placeholder}</option>
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
-        {extraOption && <option value={extraOption.value}>{extraOption.label}</option>}
-      </select>
-    </div>
-  )
-}
-
-function InputField({ label, type = 'text', value, onChange, placeholder }) {
-  return (
-    <div>
-      <label className="text-xs text-muted mb-1.5 block">{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full px-3.5 py-2.5 rounded-lg border border-line text-sm focus:outline-none focus:ring-1 focus:ring-blue focus:border-blue bg-white"
-      />
-    </div>
-  )
-}
-
-function SummaryItem({ label, value }) {
-  return (
-    <div>
-      <p className="text-[11px] uppercase tracking-wider font-label text-muted mb-1">{label}</p>
-      <p className="text-sm leading-relaxed">{value}</p>
-    </div>
-  )
-}
-
-function Row({ label, value, highlight }) {
-  return (
-    <div className="flex justify-between text-sm py-1 gap-4">
-      <span className={highlight ? 'text-blue' : 'text-muted'}>{label}</span>
-      <span className={highlight ? 'text-blue font-medium' : ''}>
-        {value < 0 ? '-' : ''}${Math.abs(value).toFixed(2)}
-      </span>
-    </div>
-  )
-}
+function Row({ label, value }) { return <div className="flex justify-between gap-4"><span className="text-white/45">{label}</span><span className="max-w-[65%] text-right text-white/80">{value || '—'}</span></div> }

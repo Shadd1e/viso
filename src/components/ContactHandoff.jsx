@@ -9,13 +9,29 @@ export default function ContactHandoff({ invoiceName, onComplete }) {
   const [phone, setPhone] = useState('')
   const [touched, setTouched] = useState(false)
 
+  function formatUSPhone(value) {
+    let digits = String(value || '').replace(/\\D/g, '')
+    if (digits.startsWith('1') && digits.length > 10) digits = digits.slice(1)
+    digits = digits.slice(0, 10)
+    if (digits.length <= 3) return digits
+    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+  }
+
+  function normalizeUSPhone(value) {
+    const digits = String(value || '').replace(/\\D/g, '')
+    if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`
+    if (digits.length === 10) return `+1${digits}`
+    return ''
+  }
+
   const valid = name.trim().length > 1 && phone.replace(/\D/g, '').length >= 10
 
   function submit(e) {
     e.preventDefault()
     setTouched(true)
     if (!valid) return
-    onComplete?.({ name: name.trim(), phone: phone.trim(), saveAsAccountName })
+    onComplete?.({ name: name.trim(), phone: normalizeUSPhone(phone), saveAsAccountName })
   }
 
   return (
@@ -53,8 +69,8 @@ export default function ContactHandoff({ invoiceName, onComplete }) {
       <input
         type="tel"
         value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-        placeholder="(555) 123-4567"
+        onChange={(e) => setPhone(formatUSPhone(e.target.value))}
+        placeholder="(404) 555-0123" inputMode="tel" autoComplete="tel" maxLength="14"
         className="w-full px-4 py-3 rounded-lg border border-line bg-white text-sm mb-1.5 focus:outline-none focus:ring-1 focus:ring-blue focus:border-blue"
       />
       <p className="text-[11px] text-muted mb-4">
