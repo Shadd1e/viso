@@ -1,5 +1,6 @@
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
 import { homepageMedia } from '../data/homepageMedia.js'
+import FleetCheckout from '../components/FleetCheckout.jsx'
 
 const benefits = [
   ['01','Minimize downtime','Keep vehicles operational by servicing them where they are instead of taking them out of service.'],
@@ -23,8 +24,8 @@ export default function Fleet() {
             <h1 className="mt-5 text-[clamp(3rem,7vw,6.5rem)] leading-[.9] tracking-[-.055em] font-display">Fleet care<span className="block text-blue">without the downtime.</span></h1>
             <p className="mt-7 max-w-xl text-lg md:text-xl leading-8 text-white/65">Professional mobile automotive services designed to keep business vehicles on the road and your operations running smoothly.</p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link to="/book" className="rounded-full bg-blue px-6 py-3.5 text-sm font-label text-white" data-cursor>Schedule fleet service</Link>
-              <a href="#fleet-services" className="rounded-full border border-white/20 px-6 py-3.5 text-sm font-label text-white/80" data-cursor>View fleet services</a>
+              <a href="#fleet-booking" className="rounded-full bg-blue px-6 py-3.5 text-sm font-label text-white" data-cursor>Book Fleet Service</a>
+              <a href="#fleet-services" className="rounded-full border border-white/20 px-6 py-3.5 text-sm font-label text-white/80" data-cursor>View Fleet Services</a>
             </div>
           </div>
           <div className="relative overflow-hidden rounded-[2rem] min-h-[360px] md:min-h-[500px] border border-white/10">
@@ -47,7 +48,7 @@ export default function Fleet() {
       <section id="fleet-services" className="py-20 md:py-28">
         <div className="max-w-[1320px] mx-auto px-6 md:px-11">
           <p className="eyebrow">COMPREHENSIVE FLEET SERVICES</p>
-          <h2 className="mt-4 text-[clamp(2.5rem,5vw,4.8rem)] leading-[.96] tracking-[-.045em] font-display">Built around your operation.</h2>
+          <h2 className="mt-4 max-w-3xl text-[clamp(2.5rem,5vw,4.8rem)] leading-[.96] tracking-[-.045em] font-display">Built around your operation.</h2>
           <div className="mt-12 grid md:grid-cols-3 gap-4">
             {services.map(([title,items]) => <div key={title} className="rounded-[1.75rem] border border-line p-7 md:p-8"><h3 className="text-2xl font-display">{title}</h3><ul className="mt-7 space-y-3">{items.map(item => <li key={item} className="flex gap-3 text-sm leading-6 text-ink/60"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-blue shrink-0" />{item}</li>)}</ul></div>)}
           </div>
@@ -74,14 +75,7 @@ export default function Fleet() {
         </div>
       </section>
 
-      <section className="py-20 md:py-28 bg-blue text-white text-center">
-        <div className="max-w-[1000px] mx-auto px-6 md:px-11">
-          <p className="text-xs uppercase tracking-[.22em] text-white/55">LET'S TALK</p>
-          <h2 className="mt-5 text-[clamp(2.8rem,6vw,5.8rem)] leading-[.92] tracking-[-.05em] font-display">Ready to streamline your fleet care?</h2>
-          <p className="mt-6 mx-auto max-w-2xl text-lg leading-8 text-white/70">Tell Viso about your vehicles, schedule, and support needs.</p>
-          <Link to="/book" className="inline-flex mt-8 rounded-full bg-white px-7 py-3.5 text-sm font-label text-blue" data-cursor>Schedule fleet service</Link>
-        </div>
-      </section>
+      <FleetCheckout />
     </main>
   )
 }
