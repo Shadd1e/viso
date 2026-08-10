@@ -2,17 +2,21 @@ import logo from '../assets/images/logo.png'
 import BookButton from './BookButton.jsx'
 
 const links = [
-  { label: 'Services', href: '#services' },
-  { label: 'Company', href: '/about' },
-  { label: 'Locations', href: '/fleet' },
-  { label: 'FAQ', href: '#faq' },
+  { label: 'Services', href: '/#services' },
+  { label: 'About', href: '/about' },
+  { label: 'FAQ', href: '/#faq' },
 ]
 
 export default function Nav() {
   return (
     <nav className="fixed top-0 left-0 right-0 z-[500] border-b border-line backdrop-blur-md bg-white/85">
       <div className="max-w-[1320px] mx-auto px-6 md:px-11 h-14 flex items-center justify-between">
-        <a href="/" aria-label="VISO Mobile Auto Care" className="group flex items-center shrink-0" data-cursor>
+        <a
+          href="/"
+          aria-label="VISO Mobile Auto Care"
+          className="group flex items-center shrink-0"
+          data-cursor
+        >
           <img
             src={logo}
             alt="VISO Mobile Auto Care"

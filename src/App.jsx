@@ -6,6 +6,7 @@ import Nav from './components/Nav.jsx'
 import DoodleBackground from './components/DoodleBackground.jsx'
 import Home from './pages/Home.jsx'
 import Booking from './pages/Booking.jsx'
+import About from './pages/About.jsx'
 
 export default function App() {
   const [ready, setReady] = useState(false)
@@ -19,7 +20,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home ready={ready} />} />
         <Route path="/book" element={<Booking />} />
-        {/* About, Fleet, Contact routes land here next */}
+        <Route path="/about" element={<About />} />
       </Routes>
     </>
   )
