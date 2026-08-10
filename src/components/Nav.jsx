@@ -30,7 +30,7 @@ export default function Nav() {
           })}
         </div>
         <div className="flex items-center gap-3.5">
-          <BookButton>Find My Tech</BookButton>
+          <BookButton href="/#faq">FAQ</BookButton>
           <BookButton primary href="/book">Book Service</BookButton>
         </div>
       </div>
