@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'Stretch Pro';
+  src: url('./assets/fonts/StretchPro.otf') format('opentype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Coolvetica';
+  src: url('./assets/fonts/Coolvetica.otf') format('opentype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Lemon Milk';
+  src: url('./assets/fonts/LemonMilk.otf') format('opentype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  @apply bg-paper text-ink font-sans;
+}
+
+/* Hide the native pointer only where the custom cursor can actually run. */
+@media (pointer: fine) {
+  body { cursor: none; }
+}
+
+::selection { background: #C9A227; color: #111111; }
+
+.line-mask { overflow: hidden; display: block; }
+
+/*
+  Viso cursor: intentionally small, crisp and high-contrast.
+  The dark keyline is what keeps the gold visible over white sections.
+*/
+.viso-cursor-glow,
+.viso-cursor-ring,
+.viso-cursor-dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 2147483647;
+  opacity: 0;
+  will-change: transform, opacity, width, height;
+}
+
+.viso-cursor-glow {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(201,162,39,.10) 0%, rgba(201,162,39,.035) 46%, transparent 72%);
+}
+
+.viso-cursor-ring {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid #C9A227;
+  background: rgba(201,162,39,.045);
+  box-shadow:
+    0 0 0 1px rgba(17,24,39,.52),
+    0 0 10px rgba(201,162,39,.28);
+  transition: width 160ms ease, height 160ms ease, background 160ms ease, opacity 160ms ease;
+}
+
+.viso-cursor-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #C9A227;
+  box-shadow:
+    0 0 0 1px rgba(17,24,39,.75),
+    0 0 7px rgba(201,162,39,.55);
+}
+
+.cursor-visible { opacity: 1; }
+
+.viso-cursor-ring.cursor-hover {
+  width: 28px;
+  height: 28px;
+  background: rgba(201,162,39,.10);
+}
+
+@media (pointer: coarse), (max-width: 900px) {
+  .viso-cursor-glow,
+  .viso-cursor-ring,
+  .viso-cursor-dot { display: none; }
+}
