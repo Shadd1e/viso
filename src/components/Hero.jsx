@@ -50,14 +50,14 @@ export default function Hero({ ready }) {
             even a tow when things go sideways. No shop, no waiting room, no wasted afternoon.
           </p>
 
-          <div className="hero-actions flex gap-4 flex-wrap mb-11">
-            <BookButton primary href="/book">Get Started →</BookButton>
-            <BookButton href="#services">Explore Services</BookButton>
+          <div className="hero-actions flex items-center gap-4 flex-wrap mb-11">
+            <BookButton primary href="/book">Book a Service →</BookButton>
+            <a href="#services" className="text-sm font-label text-ink/60 hover:text-blue transition-colors" data-cursor>See what we do</a>
           </div>
 
           <div className="flex gap-9 flex-wrap">
             {[
-              ['20', '+', 'Years Experience'],
+              ['12', '+', 'Years Experience'],
               ['14', '+', 'Service Types'],
               ['24', '/7', 'Dispatch Ready'],
             ].map(([n, suf, label], i) => (

@@ -21,6 +21,8 @@ export const SERVICE_BOOKING_FEES = {
   'fleet-service': 0,
 }
 
+export const OTHER_BOOKING_FEE = 49
+
 export const DEFAULT_MILEAGE_RATE = 0.75
 
 export const MILEAGE_BONUSES = [

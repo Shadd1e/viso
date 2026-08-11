@@ -8,6 +8,7 @@ import Home from './pages/Home.jsx'
 import Booking from './pages/Booking.jsx'
 import About from './pages/About.jsx'
 import Fleet from './pages/Fleet.jsx'
+import Footer from './components/Footer.jsx'
 
 export default function App() {
   const [ready, setReady] = useState(false)
@@ -17,12 +18,15 @@ export default function App() {
       <Cursor />
       {!ready && <Loader onDone={() => setReady(true)} />}
       <Nav />
+      <div className="min-h-screen">
       <Routes>
         <Route path="/" element={<Home ready={ready} />} />
         <Route path="/book" element={<Booking />} />
         <Route path="/about" element={<About />} />
         <Route path="/fleet" element={<Fleet />} />
       </Routes>
+      </div>
+      <Footer />
     </>
   )
 }

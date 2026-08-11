@@ -1,15 +1,15 @@
-import BookButton from './BookButton.jsx'
-
 export default function QuickBooking() {
   return (
-    <section className="py-10 md:py-12">
+    <section className="py-10 md:py-14">
       <div className="max-w-[1320px] mx-auto px-6 md:px-11">
-        <div className="rounded-2xl border border-line bg-white px-6 py-5 md:px-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+        <div className="grid gap-5 md:grid-cols-[.8fr_1.2fr] rounded-3xl border border-line bg-white p-7 md:p-9">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] font-label text-blue mb-1.5">Need the car handled?</p>
-            <h2 className="text-xl md:text-2xl font-display">Pick a service. Pick a time. We’ll come to you.</h2>
+            <p className="text-[11px] uppercase tracking-[0.18em] font-label text-blue mb-2">The Viso idea</p>
+            <h2 className="text-2xl md:text-3xl font-display tracking-tight">Your car stays where it is. The service moves.</h2>
           </div>
-          <BookButton primary href="/book">Start a booking →</BookButton>
+          <p className="text-muted leading-7 max-w-2xl md:pl-8 md:border-l md:border-line">
+            A routine service should not turn into a morning of traffic, drop-off logistics, and waiting rooms. Viso Mobile Autocare is built around the vehicle's real location — home, work, or another suitable place — so professional care can fit around the rest of your day.
+          </p>
         </div>
       </div>
     </section>

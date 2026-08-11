@@ -18,8 +18,11 @@ export default function About() {
             Your car.<span className="block text-blue">Our expertise.</span><span className="block">Wherever you are.</span>
           </h1>
           <p className="mt-8 max-w-2xl text-lg md:text-xl leading-8 text-ink/65">
-            Viso Mobile Auto Care brings professional automotive service directly to your location across Atlanta and surrounding areas — because good car care should fit around your life.
+            Viso Mobile Autocare brings professional automotive service directly to your location across Atlanta and surrounding areas — because good car care should fit around your life.
           </p>
+          <div className="mt-8 inline-flex items-center gap-3 rounded-full border border-line bg-soft px-4 py-2.5 text-sm">
+            <span className="font-label text-blue">12+</span> years of automotive experience
+          </div>
           <div className="mt-14 grid md:grid-cols-[1.45fr_.55fr] gap-5">
             <div className="relative overflow-hidden rounded-[2rem] bg-navy min-h-[390px] md:min-h-[570px]">
               <img src={homepageMedia.mobileCare} alt="Professional technician servicing a vehicle" className="absolute inset-0 h-full w-full object-cover" />
@@ -30,7 +33,7 @@ export default function About() {
               </div>
             </div>
             <div className="rounded-[2rem] border border-line bg-soft p-7 md:p-10 flex flex-col justify-between">
-              <img src={logo} alt="VISO Mobile Auto Care" className="h-11 w-auto object-contain object-left" />
+              <img src={logo} alt="Viso Mobile Autocare" className="h-11 w-auto object-contain object-left" />
               <div className="mt-12">
                 <p className="eyebrow">OUR STORY</p>
                 <h2 className="mt-3 text-3xl md:text-4xl tracking-[-.035em] font-display">Less waiting. Less disruption. Better access to car care.</h2>
