@@ -1,83 +1,67 @@
-# VISO — Mobile Auto Care (Hero + Car Transition Preview)
+# Viso Mobile Autocare — scheduling foundation
 
-This is a real Vite + React project — not a chat-preview mockup. Running it locally
-guarantees you see exactly what's there, with no CDN or sandbox issues.
+This sweep merges the existing Stripe checkout Edge Function architecture with technician scheduling.
 
-## What's included in this preview
+## What changed
 
-- **Hero section** — kinetic headline, stat counters, the top-down car diagram with
-  hover hotspots (Diagnostics / AC & Cooling / Towing), magnetic tire-peel buttons.
-- **Car Transition section (reworked)** — scroll-scrubbed, not autoplayed:
-  - Hidden at rest — the car is parked fully off-screen until you scroll here.
-  - Position is tied directly to scroll progress (0–100%) and is fully reversible —
-    scroll up and it drives back.
-  - The Hero content above fades and desaturates toward the background as you scroll
-    through, proportional to progress.
-  - The car lays a persistent tire trail behind it. The trail only fades locally
-    where it would run under one of the real "Diagnostics / AC & Cooling / Towing"
-    buttons in its lane.
-  - Those three buttons are real, clickable links — Matter.js only simulates
-    collisions on them specifically (scoped physics). The car nudges them aside as
-    it passes; scroll back up past a button and it resets in place so the effect
-    replays correctly. The old "OUR SERVICES" letter-physics concept is gone.
-  - At 100% scroll the car has fully passed through and the Services section
-    (built as the next block on the same page — no route change, no remount) is in
-    view. The URL updates to `/services` cosmetically via `history.replaceState`,
-    and back to `/` if you scroll up again.
-- **Services section** — now wired in as the block right after the car transition.
+- Customers choose a service date using the booking calendar.
+- Available time slots are generated from technician working hours, time-off, and existing bookings.
+- A technician must be active, available for jobs, and able to perform all selected services.
+- Multiple technicians can cover the same slot.
+- Scheduled bookings can use the technician's latest location, falling back to their configured base location for mileage.
+- Immediate dispatch is reserved for a future live-dispatch flow where a technician has a fresh location ping.
+- Multiple services, `Other / Not listed`, and optional extra information remain supported.
+- The final price and technician assignment are calculated server-side before Stripe checkout.
+- Georgia validation remains server-side.
 
-## Typography status
+## Folder placement
 
-- **Body copy** — Instrument Sans, unchanged.
-- **Stat numbers / big callouts** — **Stretch Pro is live** (the file you sent is
-  wired in via `@font-face` and the `font-stat` utility, used on the Hero stat
-  counters).
-- **Headlines / section titles (Coolvetica)** and **nav / buttons / UI labels
-  (Lemon Milk)** — I don't actually have these font files on my end yet, despite
-  the running list saying they'd been sent. They're not in this project or in
-  anything uploaded to this conversation. Everything that should use them
-  (`font-display` and `font-label` classes, already applied throughout) currently
-  falls back to Instrument Sans, so nothing is broken — it just won't look like the
-  final type system until the files show up. Upload `Coolvetica.otf/.ttf` and
-  `LemonMilk.otf/.ttf` and I'll drop them into `src/assets/fonts/`, uncomment the
-  two `@font-face` blocks at the top of `src/index.css`, and you're done.
+Copy the contents into the existing Viso project, preserving the paths:
 
-## Color cleanup
+- `src/pages/Booking.jsx` → replace your current booking page.
+- `src/lib/dispatch.js` → replace the current dispatch helper.
+- `supabase/` → add this entire folder to the project root.
 
-Gold has been removed from every UI surface (buttons, tags, text accents, cursor,
-loader, nav, selection color) and replaced with the existing blue as the sole
-accent. The **only** place gold still appears is on the car's own SVG — its body,
-trim, and accent details — which was already recolored and is untouched.
+## Supabase migration
 
-## Not included yet on purpose
+Run `supabase/migrations/20260811_scheduling_foundation.sql` in the Supabase SQL editor before deploying the functions.
 
-Built as components already, just not wired into this page yet:
-Testimonials, Gallery, CTA banner, FAQ.
+## Technician setup
 
-Not started yet:
-- About, Services (dedicated page), Fleet, Contact pages
-- Full booking flow (numbered bays, GPS/reverse-geocode map pin, guest booking +
-  phone quick sign-up, simulated live tracking)
-- Supabase backend integration
+Create technicians in `public.technicians`, then give each technician one or more rows in `technician_availability`:
 
-## How to run it
+- `weekday`: 0 Sunday through 6 Saturday
+- `start_time`: `HH:MM`
+- `end_time`: `HH:MM`
 
-You'll need [Node.js](https://nodejs.org) installed (v18 or newer). Then, in a
-terminal, from this project folder:
+Use `technician_time_off` for individual days off.
+
+Set `services` to a JSON array of service IDs, e.g. `["oil-change","battery"]`.
+
+Set `base_lat` and `base_lng` as the fallback location. The later technician-location Edge Function will insert live pings into `technician_location_pings`.
+
+## Environment / secrets
+
+Frontend:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+Edge Functions:
+
+- `SUPABASE_URL`
+- `VISO_SUPABASE_SERVICE_ROLE_KEY`
+- `STRIPE_SECRET_KEY`
+
+Do not put the service-role key or Stripe secret in the frontend `.env` variables.
+
+## Deploy order
+
+Do not deploy yet if Stripe is still using test/incomplete credentials. When ready:
 
 ```bash
-npm install
-npm run dev
+supabase functions deploy get-availability
+supabase functions deploy create-checkout-session
 ```
 
-Vite will print a local URL (usually `http://localhost:5173`) — open that in your
-browser. Any code changes hot-reload automatically while `npm run dev` is running.
-
-To stop the server, press `Ctrl+C` in the terminal.
-
-## If something looks off
-
-Open your browser's DevTools console (right-click → Inspect → Console tab) and tell
-me exactly what error, if any, shows up red — that pinpoints the problem immediately
-instead of us guessing back and forth.
-# viso
+The webhook and technician GPS ping function come in the next sweep.

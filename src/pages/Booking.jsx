@@ -50,7 +50,10 @@ export default function Booking() {
   const [vehicle, setVehicle] = useState({ year: '', make: '', model: '' })
   const [contact, setContact] = useState({ name: '', phone: '', email: '' })
   const [location, setLocation] = useState({ address: '', city: '', notes: '', lat: null, lng: null })
-  const [appointment, setAppointment] = useState({ date: '', time: '' })
+  const [appointment, setAppointment] = useState({ date: '', time: '', immediate: false })
+  const [extraInformation, setExtraInformation] = useState('')
+  const [availability, setAvailability] = useState([])
+  const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [couponInput, setCouponInput] = useState('')
   const [couponMessage, setCouponMessage] = useState('')
   const [consent, setConsent] = useState(false)
@@ -105,14 +108,33 @@ export default function Booking() {
     } catch { setSuggestions([]) }
   }
 
-  async function resolveDispatchDistance() {
-    if (location.lat == null || location.lng == null) return
+  async function loadAvailability(date = appointment.date) {
+    if (!date || !serviceIds.length) return
+    const url = import.meta.env.VITE_SUPABASE_URL
+    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY
+    if (!url || !anon) return
+    setAvailabilityLoading(true)
     try {
-      const techs = await getTechnicianLocations()
-      const tech = getClosestEligibleTechnician({ lat: location.lat, lng: location.lng }, techs, serviceIds)
-      if (tech) setDispatchDistance(Number(tech.distanceMiles.toFixed(1)))
-    } catch (e) { console.warn('Technician dispatch lookup unavailable:', e) }
+      const response = await fetch(`${url}/functions/v1/get-availability`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${anon}` },
+        body: JSON.stringify({ date, serviceIds }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || 'Unable to load availability.')
+      setAvailability(result.slots || [])
+      if (appointment.time && !(result.slots || []).some((s) => s.time === appointment.time)) {
+        setAppointment((v) => ({ ...v, time: '' }))
+      }
+    } catch (e) {
+      setAvailability([])
+      setError(e?.message || 'Unable to load available times.')
+    } finally { setAvailabilityLoading(false) }
   }
+
+  useEffect(() => {
+    if (step === 3 && appointment.date && serviceIds.length) loadAvailability(appointment.date)
+  }, [step, appointment.date, serviceIds.join(',')])
 
   async function next() {
     setError('')
@@ -122,7 +144,6 @@ export default function Booking() {
       if (!contact.name || !contact.phone || !contact.email) return setError('Please enter your contact details.')
       if (!normalizeUSPhone(contact.phone)) return setError('Enter a valid 10-digit US phone number.')
       if (!location.address || location.lat == null || location.lng == null) return setError('Confirm a Georgia service location using your address or phone location.')
-      await resolveDispatchDistance()
     }
     if (step === 3 && (!appointment.date || !appointment.time)) return setError('Choose a date and time.')
     setStep((s) => Math.min(4, s + 1))
@@ -143,7 +164,7 @@ export default function Booking() {
           serviceName: selectedServices[0]?.name,
           services: selectedServices.map(({ id, name, fee }) => ({ id, name, fee })),
           vehicle, appointment, contact: { ...contact, phone: normalizeUSPhone(contact.phone) },
-          location, distanceMiles: dispatchDistance, couponCode: couponPercent ? couponCode : '',
+          location, couponCode: couponPercent ? couponCode : '', extraInformation, dispatchMode: appointment.immediate ? 'immediate' : 'scheduled',
         }),
       })
       const result = await response.json().catch(() => ({}))
@@ -189,19 +210,34 @@ export default function Booking() {
                   <div className="flex gap-2"><input value={location.address} onChange={(e) => searchAddress(e.target.value)} placeholder="Start typing a Georgia address" className={`${field} flex-1`}/><button type="button" onClick={findLocation} disabled={locationLoading} className="rounded-xl border border-[#d9d9e1] px-4 text-xs font-semibold text-[#3531a4]">{locationLoading ? 'Locating…' : 'Use my location'}</button></div>
                   {suggestions.length > 0 && <div className="mt-2 overflow-hidden rounded-xl border border-[#e3e3e9] bg-white shadow-lg">{suggestions.map((s) => <button key={`${s.lat}-${s.lng}`} type="button" onClick={() => { setLocation((v) => ({ ...v, address: s.label, lat: s.lat, lng: s.lng })); setSuggestions([]) }} className="block w-full border-b border-[#eeeef2] px-4 py-3 text-left text-xs hover:bg-[#F7F7F3]">{s.label}</button>)}</div>}
                   <input value={location.city} onChange={update(setLocation, 'city')} placeholder="City / suburb (optional)" className={`${field} mt-3 w-full`}/>
-                  <textarea value={location.notes} onChange={update(setLocation, 'notes')} rows="3" placeholder="Anything we should know? (optional — parking, gate code, symptoms, etc.)" className={`${field} mt-3 w-full resize-none`}/>
+                  <textarea value={location.notes} onChange={update(setLocation, 'notes')} rows="3" placeholder="Location notes (optional — parking, gate code, etc.)" className={`${field} mt-3 w-full resize-none`}/>
                 </div>
+                <div><p className="mb-3 text-sm font-medium text-[#666879]">Anything else? <span className="font-normal text-[#9a9baa]">Optional</span></p><textarea value={extraInformation} onChange={(e) => setExtraInformation(e.target.value)} rows="4" placeholder="Tell the technician about symptoms, warning lights, special requests, or anything else that may help." className={`${field} w-full resize-none`}/></div>
               </div>
             </>}
 
-            {step === 3 && <><h2 className="text-2xl font-semibold text-[#28293c]">When works for you?</h2><p className="mt-2 text-sm text-[#858696]">Choose a date and convenient time.</p><div className="mt-7 grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium text-[#666879]">Date<input min={today} type="date" value={appointment.date} onChange={update(setAppointment, 'date')} className={`${field} mt-2 w-full`}/></label><label className="text-sm font-medium text-[#666879]">Time<input type="time" value={appointment.time} onChange={update(setAppointment, 'time')} className={`${field} mt-2 w-full`}/></label></div></>}
+            {step === 3 && <>
+              <h2 className="text-2xl font-semibold text-[#28293c]">When works for you?</h2>
+              <p className="mt-2 text-sm text-[#858696]">Pick a day first. Viso only shows times when an eligible technician is actually available.</p>
+              <div className="mt-6 rounded-2xl border border-[#e4e4ea] bg-[#fafafd] p-4">
+                <label className="text-sm font-medium text-[#666879]">Service date<input min={today} type="date" value={appointment.date} onChange={(e) => setAppointment((v) => ({ ...v, date: e.target.value, time: '', immediate: false }))} className={`${field} mt-2 w-full`}/></label>
+              </div>
+              <div className="mt-5">
+                <div className="flex items-center justify-between gap-3"><p className="text-sm font-medium text-[#666879]">Available times</p>{availabilityLoading && <span className="text-xs text-[#77798a]">Checking technicians…</span>}</div>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {availability.map((slot) => <button key={slot.time} type="button" onClick={() => setAppointment((v) => ({ ...v, time: slot.time, immediate: false }))} className={`rounded-xl border px-3 py-3 text-sm font-medium ${appointment.time === slot.time ? 'border-[#3531a4] bg-[#3531a4] text-white' : 'border-[#e1e1e8] bg-white text-[#303143] hover:border-[#aaaab9]'}`}>{slot.time}<span className={`ml-1 text-[10px] ${appointment.time === slot.time ? 'text-white/70' : 'text-[#999aaa]'}`}>{slot.technicianCount} tech{slot.technicianCount === 1 ? '' : 's'}</span></button>)}
+                </div>
+                {appointment.date && !availabilityLoading && !availability.length && <div className="mt-3 rounded-xl bg-[#F7F7F3] px-4 py-3 text-xs leading-5 text-[#666879]">No eligible technician is available on this date. Try another day.</div>}
+              </div>
+              {appointment.date === today && availability.length > 0 && <button type="button" onClick={() => setAppointment((v) => ({ ...v, immediate: false, time: availability[0].time }))} className="mt-5 w-full rounded-xl border border-[#d8d8e1] bg-white px-4 py-3 text-sm font-semibold text-[#3531a4]">Need us sooner? Choose the earliest available slot</button>}
+            </>}
 
-            {step === 4 && <><h2 className="text-2xl font-semibold text-[#28293c]">Review & Pay</h2><p className="mt-2 text-sm text-[#858696]">Check your details, then continue to secure Stripe checkout.</p><div className="mt-7 space-y-3 rounded-2xl border border-[#e3e3e9] bg-[#fafafd] p-5 text-sm"><Row label="Services" value={selectedServices.map((s) => s.name).join(', ')} /><Row label="Vehicle" value={`${vehicle.year} ${vehicle.make} ${vehicle.model}`} /><Row label="Appointment" value={`${appointment.date} at ${appointment.time}`} /><Row label="Location" value={location.address} /><Row label="Email" value={contact.email} /></div><div className="mt-6 flex gap-2"><input value={couponInput} onChange={(e) => { setCouponInput(e.target.value); setCouponMessage('') }} placeholder="Coupon code" className={`${field} min-w-0 flex-1 uppercase`}/><button type="button" onClick={() => setCouponMessage(couponPercent ? `${couponPercent}% discount applied.` : 'That coupon code is not valid.')} className="rounded-xl border border-[#d9d9e1] bg-white px-4 text-sm font-medium">Apply</button></div>{couponMessage && <p className={`mt-2 text-xs ${couponPercent ? 'text-[#3531a4]' : 'text-red-500'}`}>{couponMessage}</p>}<label className="mt-6 flex gap-3 text-sm text-[#77798a]"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 accent-[#3531a4]"/><span>I confirm these booking details are correct and agree to Viso’s booking and cancellation terms.</span></label><button type="button" disabled={loading || !consent} onClick={completePayment} className="mt-7 w-full rounded-xl bg-[#3531a4] px-5 py-4 text-sm font-semibold text-white disabled:opacity-40">{loading ? 'Opening secure checkout…' : `Continue to secure payment · ${money(total)}`}</button></>}
+            {step === 4 && <><h2 className="text-2xl font-semibold text-[#28293c]">Review & Pay</h2><p className="mt-2 text-sm text-[#858696]">Check your details, then continue to secure Stripe checkout.</p><div className="mt-7 space-y-3 rounded-2xl border border-[#e3e3e9] bg-[#fafafd] p-5 text-sm"><Row label="Services" value={selectedServices.map((s) => s.name).join(', ')} /><Row label="Vehicle" value={`${vehicle.year} ${vehicle.make} ${vehicle.model}`} /><Row label="Appointment" value={`${appointment.date} at ${appointment.time}`} /><Row label="Location" value={location.address} /><Row label="Email" value={contact.email} /><Row label="Extra information" value={extraInformation || 'None provided'} /></div><div className="mt-6 flex gap-2"><input value={couponInput} onChange={(e) => { setCouponInput(e.target.value); setCouponMessage('') }} placeholder="Coupon code" className={`${field} min-w-0 flex-1 uppercase`}/><button type="button" onClick={() => setCouponMessage(couponPercent ? `${couponPercent}% discount applied.` : 'That coupon code is not valid.')} className="rounded-xl border border-[#d9d9e1] bg-white px-4 text-sm font-medium">Apply</button></div>{couponMessage && <p className={`mt-2 text-xs ${couponPercent ? 'text-[#3531a4]' : 'text-red-500'}`}>{couponMessage}</p>}<label className="mt-6 flex gap-3 text-sm text-[#77798a]"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 accent-[#3531a4]"/><span>I confirm these booking details are correct and agree to Viso’s booking and cancellation terms.</span></label><button type="button" disabled={loading || !consent} onClick={completePayment} className="mt-7 w-full rounded-xl bg-[#3531a4] px-5 py-4 text-sm font-semibold text-white disabled:opacity-40">{loading ? 'Opening secure checkout…' : `Continue to secure payment · ${money(total)}`}</button></>}
 
             <div className="mt-9 flex justify-between border-t border-[#e8e8ed] pt-6"><button type="button" disabled={step === 1 || loading} onClick={() => { setError(''); setStep((s) => s - 1) }} className="rounded-full px-4 py-2 text-sm font-medium text-[#6d6e7d] disabled:invisible">← Back</button>{step < 4 && <button type="button" onClick={next} className="rounded-xl bg-[#3531a4] px-6 py-3 text-sm font-semibold text-white">Continue →</button>}</div>
           </section>
 
-          <aside className="booking-card h-fit rounded-[24px] border border-[#e3e3e9] bg-white p-6 shadow-[0_12px_40px_rgba(38,38,70,.06)] lg:sticky lg:top-24"><p className="text-xs font-semibold uppercase tracking-[.25em] text-[#3531a4]">Your booking</p><h2 className="mt-2 text-xl font-semibold text-[#292a3d]">{selectedServices.length ? `${selectedServices.length} service${selectedServices.length > 1 ? 's' : ''} selected` : 'Select a service'}</h2><div className="my-6 space-y-3 text-sm">{selectedServices.map((s) => <Row key={s.id} label={s.name} value={money(s.fee)} />)}<Row label={`Travel · ${dispatchDistance.toFixed(1)} mi`} value={money(mileageCharge)} />{discount > 0 && <Row label={`Coupon (${couponPercent}%)`} value={`−${money(discount)}`} />}</div><div className="flex items-end justify-between border-t border-[#e8e8ed] pt-5"><span className="text-sm text-[#858696]">Total</span><strong className="text-3xl tracking-tight text-[#292a3d]">{money(total)}</strong></div><p className="mt-4 text-xs leading-5 text-[#9a9baa]">Travel distance is calculated from the closest eligible, recently pinged technician when dispatch data is available. Card payment is processed securely by Stripe.</p></aside>
+          <aside className="booking-card h-fit rounded-[24px] border border-[#e3e3e9] bg-white p-6 shadow-[0_12px_40px_rgba(38,38,70,.06)] lg:sticky lg:top-24"><p className="text-xs font-semibold uppercase tracking-[.25em] text-[#3531a4]">Your booking</p><h2 className="mt-2 text-xl font-semibold text-[#292a3d]">{selectedServices.length ? `${selectedServices.length} service${selectedServices.length > 1 ? 's' : ''} selected` : 'Select a service'}</h2><div className="my-6 space-y-3 text-sm">{selectedServices.map((s) => <Row key={s.id} label={s.name} value={money(s.fee)} />)}<Row label="Travel" value="Calculated at secure checkout" />{discount > 0 && <Row label={`Coupon (${couponPercent}%)`} value={`−${money(discount)}`} />}</div><div className="flex items-end justify-between border-t border-[#e8e8ed] pt-5"><span className="text-sm text-[#858696]">Total</span><strong className="text-2xl tracking-tight text-[#292a3d]">{selectedServices.length ? money(subtotal) : '$0.00'}</strong></div><p className="mt-4 text-xs leading-5 text-[#9a9baa]">The final travel charge is calculated server-side from the technician assigned to your selected time. Scheduled jobs may use the technician's latest location; immediate jobs require a fresh location ping. Card payment is processed securely by Stripe.</p></aside>
         </div>
       </div>
     </main>
