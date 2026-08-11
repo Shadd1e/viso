@@ -1,28 +1,42 @@
 import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { ATLANTA_CENTER, forwardGeocode, reverseGeocode } from '../lib/geo.js'
+import { forwardGeocode, reverseGeocode } from '../lib/geo.js'
 
+// MapLibre's free public demo style — swap for a branded MapTiler / Stadia
+// Maps style URL (or a self-hosted one) to match Viso's colors. Nothing
+// else in this component depends on which style is loaded.
 const MAP_STYLE = 'https://demotiles.maplibre.org/style.json'
-const DEFAULT_CENTER = [ATLANTA_CENTER.lng, ATLANTA_CENTER.lat]
+const DEFAULT_CENTER = [-84.3733, 33.848] // [lng, lat]
 
+// Two ways in, and only two: share live GPS, or type an address and confirm
+// the real pin on the map. There's no free-text mileage field — distance is
+// always derived from an actual point.
 export default function LocationPicker({ onConfirm }) {
   const mapEl = useRef(null)
   const mapRef = useRef(null)
   const markerRef = useRef(null)
-  const watchIdRef = useRef(null)
-  const [mode, setMode] = useState(null)
+
+  const [mode, setMode] = useState(null) // 'live' | 'search' | null
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState('')
-  const [pin, setPin] = useState(null)
+  const [pin, setPin] = useState(null) // { lat, lng, label }
   const [locating, setLocating] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
+  const watchIdRef = useRef(null)
 
+  // Init map once
   useEffect(() => {
     if (!mapEl.current || mapRef.current) return
-    const map = new maplibregl.Map({ container: mapEl.current, style: MAP_STYLE, center: DEFAULT_CENTER, zoom: 9.7, attributionControl: true })
+    const map = new maplibregl.Map({
+      container: mapEl.current,
+      style: MAP_STYLE,
+      center: DEFAULT_CENTER,
+      zoom: 10,
+      attributionControl: true,
+    })
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
     mapRef.current = map
     return () => {
@@ -31,129 +45,154 @@ export default function LocationPicker({ onConfirm }) {
     }
   }, [])
 
-  useEffect(() => () => {
-    if (watchIdRef.current != null && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current)
-  }, [])
-
-  function placePin(location, { draggable = true } = {}) {
+  function placePin(lat, lng, label, { draggable = true } = {}) {
     const map = mapRef.current
     if (!map) return
     if (markerRef.current) markerRef.current.remove()
-    const marker = new maplibregl.Marker({ color: '#33359C', draggable }).setLngLat([location.lng, location.lat]).addTo(map)
+    const marker = new maplibregl.Marker({ color: '#33359C', draggable })
+      .setLngLat([lng, lat])
+      .addTo(map)
     if (draggable) {
       marker.on('dragend', async () => {
-        const { lat, lng } = marker.getLngLat()
-        setConfirmed(false)
-        setPin((p) => ({ ...(p || location), lat, lng, label: 'Updating address…' }))
+        const { lat: nlat, lng: nlng } = marker.getLngLat()
+        setPin((p) => ({ ...p, lat: nlat, lng: nlng, label: 'Locating address…' }))
         try {
-          const next = await reverseGeocode({ lat, lng })
-          setPin(next)
-        } catch (error) {
-          setPin((p) => ({ ...(p || location), lat, lng, label: error.code === 'OUTSIDE_GEORGIA' ? 'Outside Georgia' : `${lat.toFixed(5)}, ${lng.toFixed(5)}` }))
+          const addr = await reverseGeocode({ lat: nlat, lng: nlng })
+          setPin({ lat: nlat, lng: nlng, label: addr })
+        } catch {
+          setPin({ lat: nlat, lng: nlng, label: `${nlat.toFixed(5)}, ${nlng.toFixed(5)}` })
         }
+        setConfirmed(false)
       })
     }
     markerRef.current = marker
-    map.flyTo({ center: [location.lng, location.lat], zoom: 14 })
-    setPin(location)
+    map.flyTo({ center: [lng, lat], zoom: 14 })
+    setPin({ lat, lng, label })
     setConfirmed(false)
   }
 
   function startLiveLocation() {
     setMode('live')
     setSearchError('')
-    setConfirmed(false)
     if (!('geolocation' in navigator)) {
-      setSearchError('This browser cannot share live location. You can enter your address instead.')
+      setSearchError('This browser can\u2019t share live location.')
       return
     }
     setLocating(true)
-    if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current)
     watchIdRef.current = navigator.geolocation.watchPosition(
-      async ({ coords }) => {
-        const { latitude: lat, longitude: lng } = coords
-        try {
-          const location = await reverseGeocode({ lat, lng })
-          setLocating(false)
-          placePin(location, { draggable: false })
-        } catch (error) {
-          setLocating(false)
-          setSearchError(error.code === 'OUTSIDE_GEORGIA' ? 'That location is outside Viso’s Georgia service area.' : 'We could not verify that location. Try entering the address instead.')
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords
+        setLocating(false)
+        if (!pin) {
+          try {
+            const addr = await reverseGeocode({ lat, lng })
+            placePin(lat, lng, addr, { draggable: false })
+          } catch {
+            placePin(lat, lng, 'Your live location', { draggable: false })
+          }
+        } else if (markerRef.current) {
+          markerRef.current.setLngLat([lng, lat])
+          setPin((p) => ({ ...p, lat, lng }))
         }
       },
       () => {
         setLocating(false)
-        setSearchError('Location access was blocked. You can enable it or enter your address instead.')
+        setSearchError('Location access was blocked — enable it, or type your address instead.')
       },
-      { enableHighAccuracy: true, maximumAge: 30000, timeout: 12000 }
+      { enableHighAccuracy: true }
     )
   }
 
   function stopLiveLocation() {
-    if (watchIdRef.current != null && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current)
+    if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current)
     watchIdRef.current = null
   }
 
-  async function runSearch(value) {
-    setQuery(value)
+  useEffect(() => () => stopLiveLocation(), [])
+
+  async function runSearch(q) {
+    setQuery(q)
     setSearchError('')
-    setConfirmed(false)
-    if (value.trim().length < 3) {
+    if (q.trim().length < 3) {
       setResults([])
       return
     }
     setSearching(true)
     try {
-      const matches = await forwardGeocode(value)
+      const matches = await forwardGeocode(q)
       setResults(matches)
-      if (!matches.length) setSearchError('No Georgia locations found. Try adding the city or ZIP code.')
+      if (matches.length === 0) setSearchError('No matches — try adding city and state.')
     } catch {
-      setSearchError('We could not search right now. Please try again.')
+      setSearchError('Couldn\u2019t search right now — try again in a moment.')
     } finally {
       setSearching(false)
     }
   }
 
-  function pickResult(result) {
+  function pickResult(r) {
     stopLiveLocation()
     setMode('search')
     setResults([])
-    setQuery(result.label)
-    placePin(result)
+    setQuery(r.label)
+    placePin(r.lat, r.lng, r.label)
   }
 
   function confirm() {
-    if (!pin || !pin.state || pin.state.toLowerCase() !== 'georgia') return
+    if (!pin) return
     setConfirmed(true)
     onConfirm?.(pin)
   }
 
   return (
-    <div className="rounded-[1.5rem] border border-line bg-soft p-5 md:p-6">
-      <div className="mb-5">
-        <p className="text-xs uppercase tracking-[.18em] font-label text-blue">Service location</p>
-        <h3 className="mt-2 text-xl md:text-2xl font-display">Where should we meet your car?</h3>
-        <p className="mt-2 text-sm leading-6 text-muted">We only ask for location access when you need it. Viso currently serves Georgia, with coverage confirmed before booking.</p>
-      </div>
-
-      <div className="grid gap-2 sm:grid-cols-2">
-        <button type="button" onClick={startLiveLocation} data-cursor className={`rounded-xl border px-4 py-3 text-sm font-label transition ${mode === 'live' ? 'border-blue bg-blue/5 text-blue' : 'border-line bg-white hover:border-blue/50'}`}>
-          {locating ? 'Finding you…' : 'Use my current location'}
+    <div className="p-5 rounded-xl border border-line bg-[#FAFAF8]">
+      <div className="flex gap-2 mb-4">
+        <button
+          type="button"
+          data-cursor
+          onClick={startLiveLocation}
+          className={
+            'flex-1 px-4 py-3 rounded-lg border text-sm font-label transition-colors ' +
+            (mode === 'live' ? 'border-blue text-blue bg-blue/5' : 'border-line hover:border-blue/60')
+          }
+        >
+          {locating ? 'Finding you…' : mode === 'live' ? 'Sharing live location' : 'Use my live location'}
         </button>
-        <button type="button" onClick={() => { stopLiveLocation(); setMode('search'); setSearchError('') }} data-cursor className={`rounded-xl border px-4 py-3 text-sm font-label transition ${mode === 'search' ? 'border-blue bg-blue/5 text-blue' : 'border-line bg-white hover:border-blue/50'}`}>
-          Enter an address
+        <button
+          type="button"
+          data-cursor
+          onClick={() => {
+            stopLiveLocation()
+            setMode('search')
+          }}
+          className={
+            'flex-1 px-4 py-3 rounded-lg border text-sm font-label transition-colors ' +
+            (mode === 'search' ? 'border-blue text-blue bg-blue/5' : 'border-line hover:border-blue/60')
+          }
+        >
+          Type my address
         </button>
       </div>
 
       {mode === 'search' && (
-        <div className="relative mt-3">
-          <input value={query} onChange={(e) => runSearch(e.target.value)} placeholder="Street, city, ZIP…" className="field" autoComplete="street-address" />
+        <div className="relative mb-4">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => runSearch(e.target.value)}
+            placeholder="Start typing an address…"
+            className="w-full px-4 py-3 rounded-lg border border-line bg-white text-sm focus:outline-none focus:ring-1 focus:ring-blue focus:border-blue"
+          />
           {(results.length > 0 || searching) && (
-            <div className="absolute z-20 top-full left-0 right-0 mt-1 rounded-xl border border-line bg-white shadow-xl overflow-hidden">
-              {searching && <div className="px-4 py-3 text-xs text-muted">Searching Georgia locations…</div>}
-              {results.map((result) => (
-                <button key={`${result.lat}-${result.lng}`} type="button" onClick={() => pickResult(result)} className="block w-full text-left px-4 py-3 text-sm hover:bg-blue/5 border-t border-line first:border-t-0">
-                  {result.label}
+            <div className="absolute z-10 top-full left-0 right-0 mt-1 rounded-lg border border-line bg-white shadow-lg overflow-hidden">
+              {searching && <div className="px-4 py-2.5 text-xs text-muted">Searching…</div>}
+              {results.map((r, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => pickResult(r)}
+                  className="block w-full text-left px-4 py-2.5 text-sm hover:bg-blue/5 border-t border-line first:border-t-0"
+                >
+                  {r.label}
                 </button>
               ))}
             </div>
@@ -161,22 +200,33 @@ export default function LocationPicker({ onConfirm }) {
         </div>
       )}
 
-      {searchError && <p className="mt-3 text-sm text-red-600">{searchError}</p>}
+      {searchError && <p className="text-xs text-red-600 mb-3">{searchError}</p>}
 
-      <div ref={mapEl} className="mt-4 h-60 w-full overflow-hidden rounded-xl border border-line" />
+      <div ref={mapEl} className="w-full h-56 rounded-lg overflow-hidden border border-line" />
 
       {pin ? (
-        <div className="mt-4 flex items-end justify-between gap-4 flex-wrap">
-          <div className="max-w-xl text-sm leading-6 text-muted">
-            <span className="font-medium text-ink">Pinned location:</span> {pin.label}
-            {mode === 'search' && <span className="block text-xs mt-1 text-ink/45">You can drag the pin to fine-tune the meeting point.</span>}
-          </div>
-          <button type="button" onClick={confirm} data-cursor disabled={confirmed} className={`rounded-xl px-5 py-3 text-sm font-label transition ${confirmed ? 'bg-blue/10 text-blue' : 'bg-blue text-white hover:bg-blue-deep'}`}>
-            {confirmed ? 'Location confirmed ✓' : 'Confirm location'}
+        <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-muted leading-relaxed max-w-[420px]">
+            <span className="text-ink font-medium">Pinned: </span>
+            {pin.label}
+            {mode === 'search' && ' — drag the pin if it\u2019s not exact.'}
+          </p>
+          <button
+            type="button"
+            data-cursor
+            onClick={confirm}
+            className={
+              'px-4 py-2 rounded-lg text-sm font-label transition-colors shrink-0 ' +
+              (confirmed ? 'bg-blue/10 text-blue' : 'bg-blue text-white hover:bg-blue-deep')
+            }
+          >
+            {confirmed ? 'Location confirmed \u2713' : 'Confirm this location'}
           </button>
         </div>
       ) : (
-        <p className="mt-3 text-xs leading-5 text-muted">Your location is not requested until you choose one of the options above.</p>
+        <p className="mt-3 text-xs text-muted">
+          Share your live location or type an address above — we\u2019ll only use a real, tagged point on the map.
+        </p>
       )}
     </div>
   )

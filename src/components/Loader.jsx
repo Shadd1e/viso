@@ -67,7 +67,7 @@ export default function Loader({ onDone }) {
       <div ref={rootRef} className="fixed inset-0 z-[9001] flex items-center justify-center pointer-events-none">
         <div className="text-center text-white">
           <div className="mb-9 inline-flex items-center justify-center rounded-xl bg-white/95 px-5 py-3 shadow-2xl shadow-black/20">
-            <img src={logo} alt="Viso Mobile Autocare" className="h-14 w-auto object-contain" />
+            <img src={logo} alt="VISO Mobile Auto Care" className="h-14 w-auto object-contain" />
           </div>
 
           <div ref={trackRef} className="relative w-64 h-8 mx-auto">

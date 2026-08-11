@@ -1,34 +1,23 @@
 import { milesBetween } from './geo.js'
 
-// The UI is ready for a real technician-location feed without inventing one.
-// Set VITE_TECHNICIAN_LOCATIONS_URL to the authenticated admin/dispatch endpoint.
-// Expected response: { technicians: [{ id, name, lat, lng, lastSeenAt, available, services }] }
-
+const LOCATION_URL = import.meta.env.VITE_TECHNICIAN_LOCATIONS_URL
 const MAX_LOCATION_AGE_MS = 2 * 60 * 1000
 
-export async function findNearestTechnician(customerLocation, selectedServiceIds = []) {
-  const endpoint = import.meta.env.VITE_TECHNICIAN_LOCATIONS_URL
-  if (!endpoint || !customerLocation?.lat || !customerLocation?.lng) return null
+export async function getTechnicianLocations() {
+  if (!LOCATION_URL) return []
+  const res = await fetch(LOCATION_URL, { headers: { Accept: 'application/json' } })
+  if (!res.ok) throw new Error('Unable to load technician locations.')
+  const data = await res.json()
+  return Array.isArray(data) ? data : (data.technicians || [])
+}
 
-  const response = await fetch(endpoint, { headers: { Accept: 'application/json' } })
-  if (!response.ok) throw new Error('technician-feed-failed')
-  const payload = await response.json()
-  const technicians = Array.isArray(payload?.technicians) ? payload.technicians : []
+export function getClosestEligibleTechnician(customer, technicians, requiredServiceIds = []) {
   const now = Date.now()
-
-  const eligible = technicians
-    .filter((tech) => tech.available !== false)
-    .filter((tech) => Number.isFinite(Number(tech.lat)) && Number.isFinite(Number(tech.lng)))
-    .filter((tech) => {
-      if (!tech.lastSeenAt) return false
-      return now - new Date(tech.lastSeenAt).getTime() <= MAX_LOCATION_AGE_MS
-    })
-    .filter((tech) => {
-      if (!selectedServiceIds.length || !Array.isArray(tech.services) || !tech.services.length) return true
-      return selectedServiceIds.every((id) => tech.services.includes(id))
-    })
-    .map((tech) => ({ ...tech, distanceMiles: milesBetween(customerLocation, { lat: Number(tech.lat), lng: Number(tech.lng) }) }))
-    .sort((a, b) => a.distanceMiles - b.distanceMiles)
-
-  return eligible[0] || null
+  return technicians
+    .filter((t) => t.status === 'available')
+    .filter((t) => t.latitude != null && t.longitude != null)
+    .filter((t) => !t.updatedAt || now - new Date(t.updatedAt).getTime() <= MAX_LOCATION_AGE_MS)
+    .filter((t) => !requiredServiceIds.length || !Array.isArray(t.services) || requiredServiceIds.every((id) => t.services.includes(id)))
+    .map((t) => ({ ...t, distanceMiles: milesBetween(customer, { lat: Number(t.latitude), lng: Number(t.longitude) }) }))
+    .sort((a, b) => a.distanceMiles - b.distanceMiles)[0] || null
 }

@@ -18,14 +18,12 @@ export default function App() {
       <Cursor />
       {!ready && <Loader onDone={() => setReady(true)} />}
       <Nav />
-      <div className="min-h-screen">
       <Routes>
         <Route path="/" element={<Home ready={ready} />} />
         <Route path="/book" element={<Booking />} />
         <Route path="/about" element={<About />} />
         <Route path="/fleet" element={<Fleet />} />
       </Routes>
-      </div>
       <Footer />
     </>
   )
