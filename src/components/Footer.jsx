@@ -1,75 +1,36 @@
 import { Link } from 'react-router-dom'
-import logo from '../assets/images/logo.png'
 
 export default function Footer() {
   return (
-    <footer className="bg-[#171823] py-12 text-white">
-      <div className="mx-auto max-w-[1280px] px-5 sm:px-7 lg:px-10">
-        <div className="grid gap-10 md:grid-cols-[1.5fr_1fr_1fr]">
-          <div>
-            <Link
-              to="/"
-              aria-label="Viso Mobile Autocare"
-              className="inline-flex items-center"
-            >
-              <img
-                src={logo}
-                alt="Viso Mobile Autocare"
-                className="h-14 w-auto object-contain"
-              />
-            </Link>
-
-            <p className="mt-4 max-w-[390px] text-sm leading-6 text-white/45">
-              Professional mobile auto care designed around your vehicle,
-              your location and your schedule.
-            </p>
+    <footer className="border-t border-line bg-white pt-14 pb-8">
+      <div className="max-w-[1320px] mx-auto px-6 md:px-11">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-10 pb-12">
+          <div className="lg:col-span-2">
+            <div className="flex items-center gap-2.5 font-extrabold text-lg font-label">
+              <span className="w-7 h-7 rounded-md bg-blue flex items-center justify-center text-white text-sm">V</span>
+              VISO
+            </div>
+            <p className="text-sm text-muted max-w-sm leading-relaxed mt-4">Professional auto care delivered to you. Maintenance, diagnostics, detailing, and roadside help without the shop visit.</p>
           </div>
-
           <div>
-            <p className="text-xs font-bold uppercase tracking-[.2em] text-white/30">
-              Explore
-            </p>
-
-            <div className="mt-4 space-y-3 text-sm text-white/60">
-              <a href="/#services" className="block hover:text-white">
-                Services
-              </a>
-              <a href="/#how-it-works" className="block hover:text-white">
-                How It Works
-              </a>
-              <Link to="/about" className="block hover:text-white">
-                About
-              </Link>
-              <a href="/#faq" className="block hover:text-white">
-                FAQ
-              </a>
+            <h3 className="font-label text-[10px] uppercase tracking-widest mb-4">Navigate</h3>
+            <div className="space-y-2.5 text-sm text-muted">
+              <Link to="/" className="block hover:text-blue transition-colors">Home</Link>
+              <a href="#services" className="block hover:text-blue transition-colors">Services</a>
+              <a href="#faq" className="block hover:text-blue transition-colors">FAQ</a>
+              <Link to="/fleet" className="block hover:text-blue transition-colors">Fleet</Link>
             </div>
           </div>
-
           <div>
-            <p className="text-xs font-bold uppercase tracking-[.2em] text-white/30">
-              Get started
-            </p>
-
-            <div className="mt-4 space-y-3 text-sm text-white/60">
-              <Link to="/book" className="block hover:text-white">
-                Book a Service
-              </Link>
-              <span className="block">
-                Technician applications — Coming soon
-              </span>
-            </div>
+            <h3 className="font-label text-[10px] uppercase tracking-widest mb-4">Get started</h3>
+            <p className="text-sm text-muted leading-relaxed mb-4">Atlanta, Georgia & surrounding metro.</p>
+            <Link to="/book" data-cursor className="text-sm font-label text-blue hover:text-blue-deep transition-colors">Book a service →</Link>
           </div>
         </div>
 
-        <div className="mt-12 flex flex-col gap-3 border-t border-white/10 pt-6 text-xs text-white/35 sm:flex-row sm:items-center sm:justify-between">
-          <span>
-            © {new Date().getFullYear()} Viso Mobile Autocare. All rights reserved.
-          </span>
-
-          <span>
-            Developed by GoddyWhyte Technologies
-          </span>
+        <div className="border-t border-line pt-6 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between text-[11px] text-muted">
+          <span>© 2026 Viso Mobile Autocare. All rights reserved.</span>
+          <span>Developed by GoddyWhyte Technologies</span>
         </div>
       </div>
     </footer>

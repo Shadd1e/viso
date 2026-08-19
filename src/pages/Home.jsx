@@ -71,7 +71,7 @@ const faqs = [
   {
     question: 'What happens if no technician is available?',
     answer:
-      "Viso checks the technicians' schedules before accepting the booking. If nobody is available for your selected time, you can choose another time.",
+      "Viso checks technician schedules before accepting the booking. If nobody is available for your selected time, you can choose another time.",
   },
   {
     question: 'How is the mileage charge calculated?',
@@ -365,8 +365,10 @@ export default function Home() {
       </section>
 
       {/* EXPERIENCE / BRAND STATEMENT */}
-      <section className="bg-white py-24 md:py-32">
-        <div className="mx-auto max-w-[1100px] px-5 text-center sm:px-7">
+      <section className="relative overflow-hidden bg-white py-24 md:py-32">
+        <img src="/images/viso-service-bg.jpg" alt="Mobile vehicle service" className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.07]" />
+        <div className="pointer-events-none absolute inset-0 bg-white/75" />
+        <div className="relative mx-auto max-w-[1100px] px-5 text-center sm:px-7">
 
           <p className="text-xs font-bold uppercase tracking-[.28em] text-[#3531a4]">
             The Viso difference
@@ -389,8 +391,10 @@ export default function Home() {
       <section className="bg-[#f5f5fa] py-24 md:py-28">
         <div className="mx-auto max-w-[1280px] px-5 sm:px-7 lg:px-10">
 
-          <div className="rounded-[32px] bg-[#3531a4] p-7 text-white md:p-12 lg:p-16">
-            <div className="grid gap-12 lg:grid-cols-[1fr_.9fr] lg:items-center">
+          <div className="relative overflow-hidden rounded-[32px] bg-[#3531a4] p-7 text-white md:p-12 lg:p-16">
+            <img src="/images/viso-driveway.jpg" alt="Viso mobile service at a driveway" className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.08]" />
+            <div className="pointer-events-none absolute inset-0 bg-[#3531a4]/80" />
+            <div className="relative z-10 grid gap-12 lg:grid-cols-[1fr_.9fr] lg:items-center">
 
               <div>
                 <p className="text-xs font-bold uppercase tracking-[.28em] text-white/55">
@@ -461,9 +465,9 @@ export default function Home() {
               </p>
             </div>
 
-            <span className="w-fit rounded-full bg-[#f0efff] px-5 py-2.5 text-xs font-bold uppercase tracking-[.16em] text-[#3531a4]">
-              Coming soon
-            </span>
+            <Link to="/technicians/apply" className="w-fit rounded-full bg-[#3531a4] px-5 py-2.5 text-xs font-bold uppercase tracking-[.16em] text-white hover:bg-[#29267f]">
+              Become a Technician
+            </Link>
           </div>
 
         </div>
@@ -580,7 +584,7 @@ export default function Home() {
                   Book a Service
                 </Link>
                 <span className="block">
-                  Technician applications — Coming soon
+                  Become a Technician
                 </span>
               </div>
             </div>

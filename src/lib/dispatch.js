@@ -11,6 +11,12 @@ export async function getTechnicianLocations() {
   return Array.isArray(data) ? data : (data.technicians || [])
 }
 
+export async function findNearestTechnician(customerLocation, selectedServiceIds = []) {
+  if (!customerLocation?.lat || !customerLocation?.lng) return null
+  const technicians = await getTechnicianLocations()
+  return getClosestEligibleTechnician(customerLocation, technicians, selectedServiceIds)
+}
+
 export function getClosestEligibleTechnician(customer, technicians, requiredServiceIds = []) {
   const now = Date.now()
   return technicians

@@ -96,3 +96,5 @@ body {
   .viso-cursor-ring,
   .viso-cursor-dot { display: none; }
 }
+
+.field{width:100%;border:1px solid rgba(11,11,20,.12);background:#fff;border-radius:.9rem;padding:.82rem 1rem;font-size:.875rem;outline:none;color:#242538}.field:focus{border-color:rgba(51,53,156,.55);box-shadow:0 0 0 3px rgba(51,53,156,.08)}

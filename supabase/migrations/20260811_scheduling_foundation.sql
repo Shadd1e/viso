@@ -29,7 +29,7 @@ create table if not exists public.technician_availability (
   weekday smallint not null check (weekday between 0 and 6),
   start_time text not null,
   end_time text not null,
-  active boolean not null default true,
+  active boolean not null default true
 );
 
 create table if not exists public.technician_time_off (
